@@ -12,6 +12,7 @@ The seed is an integer; keep (p, q, seed) secret — that's your "key".
 import sys
 import struct
 import math
+import zipfile
 from PIL import Image
 
 
@@ -159,6 +160,28 @@ def extract_bits(pixels: list, n_bits: int) -> bytes:
         result.append(b)
     return bytes(result)
 
+import zipfile, io
+
+def append_zip_polyglot(png_path: str, payload_path: str, arc_name: str = "payload") -> None:
+    """
+    Append a ZIP archive containing `payload_path` after the PNG IEND chunk.
+    The result is a valid PNG *and* a valid ZIP (e.g. `unzip image.png` works).
+    """
+    with open(payload_path, "rb") as f:
+        raw = f.read()
+
+    # Build the ZIP in memory
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr(arc_name, raw)
+    zip_bytes = buf.getvalue()
+
+    # Append after the PNG (which already ends with IEND + CRC)
+    with open(png_path, "ab") as f:
+        f.write(zip_bytes)
+
+    print(f"[+] Polyglot ZIP appended ({len(zip_bytes):,} bytes after IEND)")
+    print(f"    → unzip {png_path}  # extracts '{arc_name}'")
 
 # ── High-level API ────────────────────────────────────────────────────────────
 
@@ -246,6 +269,7 @@ if __name__ == "__main__":
     if mode == "hide" and len(sys.argv) == 6:
         _, _, cover, exe, output, seed_str = sys.argv
         hide(cover, exe, output, int(seed_str))
+        append_zip_polyglot(output, exe, arc_name='payload.bin')
 
     elif mode == "reveal" and len(sys.argv) == 5:
         _, _, steg, output, seed_str = sys.argv
